@@ -97,7 +97,7 @@ class Portscan():
                 ret[attr] = ''
         return ret
 
-    def _simple_print(self, dic, ebuild):
+    def simple_print(self, dic, ebuild):
         print('NAME: ' + ebuild)
         for attr in self.attr_list:
             if type(dic[attr]) is str:
@@ -110,18 +110,35 @@ class Portscan():
                 print(attr + ': ' + token)
         print('\n')
 
-
-    def scan_portage_tree(self, rootdir):
+    def scan_portage_tree(self, rootdir, handler):
         #for each subdirectory of the portage tree
         for root, subFolders, files in os.walk(rootdir):
             ebuild = self._get_most_recent_ebuild(files)
             if not ebuild is None:
                 ret = self._scan_ebuild(root, ebuild)
+                handler(ret, self._clean_ebuild_name(root))
 
-                self._simple_print(ret, self._clean_ebuild_name(root))
+from pygraph_redis.directed_graph import Directed_graph
+import redis
+
+#creating a basic logger
+import logging
+logging.basicConfig(format = u'%(message)s')
+logger = logging.getLogger(u'redis')
+logger.parent.setLevel(logging.DEBUG)
+
+#creating the redis connexion
+r_server = redis.Redis("localhost")
+
+#creating the graph object
+deps = Directed_graph(r_server, u'deps', logger)
+rdeps = Directed_graph(r_server, u'rdeps', logger)
+
+def redis_insert(dic, ebuild):
+    deps.write_on_node(ebuild,[],dic['DEPEND'], {'DESCRIPTION': dic['DESCRIPTION'], 'LICENSE': dic['LICENSE'], 'HOMEPAGE': dic['HOMEPAGE']})
 
 rootdir = sys.argv[1]
 
 attr_list=['RDEPEND', 'DEPEND', 'LICENSE', 'DESCRIPTION', 'HOMEPAGE']
 scanner = Portscan(rootdir, attr_list)
-scanner.scan_portage_tree(rootdir)
+scanner.scan_portage_tree(rootdir, redis_insert)
